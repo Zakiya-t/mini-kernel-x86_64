@@ -1,0 +1,20 @@
+# Virtual disk images (GitHub rejects files > 100 MB; disk.img is 1 GB)
+disk.img
+*.img
+
+# Build directories and binary outputs
+bin/
+build/
+iso/boot/kernel.bin
+*.iso
+
+# Shell compilation outputs
+myshell-indp/myshell
+myshell-indp/myshell.elf
+myshell-indp/**/*.o
+*.o
+
+# Python caches and temporary files
+__pycache__/
+*.pyc
+exported_fs/
