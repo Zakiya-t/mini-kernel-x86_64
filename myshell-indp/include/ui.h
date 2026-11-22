@@ -22,6 +22,7 @@
 #define COLOR_BRIGHT_YELLOW  "\033[93m"
 
 /* UI Rendering Functions */
+void ui_print_banner(void);
 void ui_render_prompt(const ShellState *state);
 
 #endif

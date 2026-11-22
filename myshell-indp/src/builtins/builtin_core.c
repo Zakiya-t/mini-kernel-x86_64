@@ -274,7 +274,6 @@ int builtin_exit(int argc, char **argv, ShellState *state)
 
 /* Builtins registry table */
 static const BuiltinCommand BUILTINS[] = {
-<<<<<<< HEAD
     {"cd",       builtin_cd,       "Change the current directory",          "cd [dir | ~ | -]"},
     {"pwd",      builtin_pwd,      "Print current working directory",       "pwd"},
     {"ls",       builtin_ls,       "List directory contents with colors",   "ls [-l] [-a] [path]"},
@@ -298,29 +297,6 @@ static const BuiltinCommand BUILTINS[] = {
     {"observe",  builtin_observe,  "Toggle live kernel request tracing",    "observe on|off"},
     {"shutdown", builtin_shutdown, "Clean ACPI hardware power off",         "shutdown"},
     {"exit",     builtin_exit,     "Exit MyShell and shutdown system",      "exit [status]"},
-=======
-    {"cd",      builtin_cd,      "Change the current directory",          "cd [dir | ~ | -]"},
-    {"pwd",     builtin_pwd,     "Print current working directory",       "pwd"},
-    {"ls",      builtin_ls,      "List directory contents with colors",   "ls [-l] [-a] [path]"},
-    {"cat",     builtin_cat,     "Concatenate and display files",         "cat [-n] <file...>"},
-    {"mkdir",   builtin_mkdir,   "Create directory",                      "mkdir <dir...>"},
-    {"touch",   builtin_touch,   "Create empty file or update timestamp", "touch <file...>"},
-    {"nano",    builtin_nano,    "Interactive terminal text editor",      "nano [file]"},
-    {"sysinfo", builtin_sysinfo, "Display modern system information",     "sysinfo"},
-    {"lscpu",   builtin_lscpu,   "Query CPU architecture from /proc/cpuinfo", "lscpu"},
-    {"top",     builtin_top,     "Live kernel process & memory monitor",      "top [-n iterations]"},
-    {"ps",      builtin_ps,      "Report live process snapshot from /proc",   "ps"},
-    {"echo",    builtin_echo,    "Display a line of text",                "echo [-n] [string...]"},
-    {"clear",   builtin_clear,   "Clear the terminal screen",             "clear"},
-    {"history", builtin_history, "Display command history",               "history"},
-    {"type",    builtin_type,    "Display command classification",        "type <command>"},
-    {"help",        builtin_help,        "Show help manual for built-ins",        "help"},
-    {"sched-run",   builtin_sched_run,   "Execute jobs using custom CPU scheduler", "sched-run <fcfs|rr|priority> [args]"},
-    {"sched-bench", builtin_sched_bench, "Benchmark & compare scheduling policies", "sched-bench [workload_size]"},
-    {"inspect",     builtin_inspect,     "Expose Linux kernel subsystem decisions", "inspect <command>"},
-    {"telemetry",   builtin_telemetry,   "Toggle live kernel resource telemetry badge", "telemetry [on|off]"},
-    {"exit",        builtin_exit,        "Exit MyShell",                          "exit [status]"},
->>>>>>> 07cedf0be6f57713d507d53a6c5198da7886465b
 };
 
 static const int NUM_BUILTINS = sizeof(BUILTINS) / sizeof(BUILTINS[0]);
