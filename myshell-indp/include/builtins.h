@@ -33,6 +33,13 @@ int builtin_top(int argc, char **argv, ShellState *state);
 int builtin_ps(int argc, char **argv, ShellState *state);
 int builtin_nano(int argc, char **argv, ShellState *state);
 int builtin_observe(int argc, char **argv, ShellState *state);
+int builtin_whoami(int argc, char **argv, ShellState *state);
+int builtin_diskinfo(int argc, char **argv, ShellState *state);
+int builtin_yield(int argc, char **argv, ShellState *state);
+int builtin_alloc(int argc, char **argv, ShellState *state);
+int builtin_free(int argc, char **argv, ShellState *state);
+int builtin_reap(int argc, char **argv, ShellState *state);
+int builtin_memtest(int argc, char **argv, ShellState *state);
 int builtin_exit(int argc, char **argv, ShellState *state);
 
 /* Builtin dispatcher interface */

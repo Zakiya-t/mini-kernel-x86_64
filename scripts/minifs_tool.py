@@ -405,6 +405,12 @@ class MiniFS:
                 f_ino = self.read_inode(eid)
                 print(f" [FILE] {full_name} ({f_ino['size']} bytes, {f_ino['blocks']} blocks)")
 
+    def ls(self, path="/"):
+        p_id = self.resolve_path(path) if path != "/" else 1
+        if p_id is None:
+            raise FileNotFoundError(f"Directory not found: {path}")
+        return self.list_dir(p_id)
+
 def main():
     if len(sys.argv) < 3:
         print("Usage: minifs_tool.py <disk.img> <command> [args...]")

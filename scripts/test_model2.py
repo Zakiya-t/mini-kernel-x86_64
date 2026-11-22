@@ -129,7 +129,40 @@ def test_model2():
         proc.kill()
         return False
 
-    print("\n[PASS] ps succeeded! Testing 'mem'...")
+    print("\n[PASS] ps succeeded! Testing 'whoami'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"whoami\n")
+    proc.stdin.flush()
+    if not read_until("Ring 3", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] whoami succeeded! Testing 'diskinfo'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"diskinfo\n")
+    proc.stdin.flush()
+    if not read_until("QEMU HARDDISK", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] diskinfo succeeded! Testing 'memtest'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"memtest\n")
+    proc.stdin.flush()
+    if not read_until("[PASS]", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] memtest succeeded! Testing 'mem'...")
     time.sleep(0.3)
     proc.stdin.write(b"mem\n")
     proc.stdin.flush()

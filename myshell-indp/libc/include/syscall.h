@@ -88,6 +88,14 @@ typedef struct {
     char     name[28];
 } user_fs_dirent_t;
 
+typedef struct {
+    bool     present;
+    char     model[41];
+    char     serial[21];
+    uint32_t total_sectors;
+    uint32_t size_mb;
+} user_ata_device_info_t;
+
 int64_t sys_call(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4);
 
 #endif

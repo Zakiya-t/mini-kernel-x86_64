@@ -261,6 +261,136 @@ int builtin_observe(int argc, char **argv, ShellState *state)
     return 0;
 }
 
+int builtin_whoami(int argc, char **argv, ShellState *state)
+{
+    (void)argc;
+    (void)argv;
+    (void)state;
+    uint16_t cs = 0;
+    __asm__ volatile("mov %%cs, %0" : "=r"(cs));
+    int ring = cs & 3;
+    int64_t pid = sys_call(SYS_GETPID, 0, 0, 0, 0);
+
+    printf("\n%sCurrent Execution Identity & Hardware Privilege:%s\n", COLOR_BOLD, COLOR_RESET);
+    printf("  User:            root\n");
+    printf("  Process ID:      %ld\n", (long)pid);
+    printf("  CPU Privilege:   %sRing %d (%s Mode)%s\n",
+           ring == 3 ? COLOR_GREEN : COLOR_RED,
+           ring, ring == 3 ? "User" : "Kernel", COLOR_RESET);
+    printf("  Code Selector:   0x%04x (%s)\n", cs, ring == 3 ? "User Code Segment, DPL=3" : "Kernel Code Segment, DPL=0");
+    printf("  Isolation:       Hardware enforced by x86-64 CPU IRETQ & TSS.RSP0\n\n");
+    return 0;
+}
+
+int builtin_diskinfo(int argc, char **argv, ShellState *state)
+{
+    (void)argc;
+    (void)argv;
+    (void)state;
+    user_ata_device_info_t info;
+    memset(&info, 0, sizeof(info));
+    int64_t ret = sys_call(SYS_DISK_INFO, (uint64_t)(uintptr_t)&info, 0, 0, 0);
+    if (ret < 0 || !info.present) {
+        printf("No ATA disk detected.\n");
+        return 1;
+    }
+    printf("\n%sATA Hardware Drive Information:%s\n", COLOR_BOLD, COLOR_RESET);
+    printf("  Drive Model:   %s\n", info.model);
+    printf("  Serial Number: %s\n", info.serial);
+    printf("  Total Sectors: %u (512 bytes/sector)\n", info.total_sectors);
+    printf("  Storage Size:  %u MiB (%u GiB)\n", info.size_mb, info.size_mb / 1024);
+    printf("  Filesystem:    MiniFS Partition (Offset: LBA 2048, 1024-byte blocks)\n");
+    printf("  I/O Mode:      ATA PIO Ports 0x1F0-0x1F7 / 0x3F6\n\n");
+    return 0;
+}
+
+int builtin_yield(int argc, char **argv, ShellState *state)
+{
+    (void)argc;
+    (void)argv;
+    (void)state;
+    printf("Yielding CPU time-slice to kernel Round-Robin scheduler...\n");
+    sys_call(SYS_YIELD, 0, 0, 0, 0);
+    printf("Resumed execution in Ring 3 after scheduler dispatch.\n");
+    return 0;
+}
+
+int builtin_alloc(int argc, char **argv, ShellState *state)
+{
+    (void)state;
+    if (argc < 2) {
+        printf("Usage: alloc <bytes>\n");
+        return 1;
+    }
+    size_t size = (size_t)atoi(argv[1]);
+    if (size == 0) {
+        printf("alloc: size must be > 0\n");
+        return 1;
+    }
+    int64_t ptr = sys_call(SYS_MEM_ALLOC, (uint64_t)size, 0, 0, 0);
+    if (ptr <= 0) {
+        printf("alloc: kernel memory allocation failed\n");
+        return 1;
+    }
+    printf("Allocated %lu bytes in kernel heap at virtual address: 0x%016lx\n",
+           (unsigned long)size, (uint64_t)ptr);
+    return 0;
+}
+
+int builtin_free(int argc, char **argv, ShellState *state)
+{
+    (void)state;
+    if (argc < 2) {
+        printf("Usage: free <hex_address>\n");
+        return 1;
+    }
+    uint64_t addr = 0;
+    const char *s = argv[1];
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+    while (*s) {
+        addr <<= 4;
+        if (*s >= '0' && *s <= '9') addr |= (*s - '0');
+        else if (*s >= 'a' && *s <= 'f') addr |= (*s - 'a' + 10);
+        else if (*s >= 'A' && *s <= 'F') addr |= (*s - 'A' + 10);
+        s++;
+    }
+    int64_t ret = sys_call(SYS_MEM_FREE, addr, 0, 0, 0);
+    printf("Released kernel memory at 0x%016lx (result: %ld)\n", addr, (long)ret);
+    return 0;
+}
+
+int builtin_reap(int argc, char **argv, ShellState *state)
+{
+    (void)state;
+    if (argc < 2) {
+        printf("Usage: reap <pid>\n");
+        return 1;
+    }
+    uint32_t pid = (uint32_t)atoi(argv[1]);
+    int64_t ret = sys_call(SYS_REAP, (uint64_t)pid, 0, 0, 0);
+    if (ret == 0) {
+        printf("Process PID %u reaped from kernel process table.\n", pid);
+        return 0;
+    }
+    printf("Failed to reap PID %u (process not terminated or PID invalid)\n", pid);
+    return 1;
+}
+
+int builtin_memtest(int argc, char **argv, ShellState *state)
+{
+    (void)argc;
+    (void)argv;
+    (void)state;
+    printf("Invoking kernel memory verification test suite via SYS_TEST_MEM...\n");
+    int64_t ret = sys_call(SYS_TEST_MEM, 0, 0, 0, 0);
+    if (ret == 0) {
+        printf("\033[1;32m[PASS]\033[0m Kernel memory subsystem test suite passed successfully!\n");
+    } else {
+        printf("\033[1;31m[FAIL]\033[0m Kernel memory test failed with code %ld\n", (long)ret);
+    }
+    return (int)ret;
+}
+
 int builtin_exit(int argc, char **argv, ShellState *state)
 {
     state->is_running = false;
@@ -287,6 +417,13 @@ static const BuiltinCommand BUILTINS[] = {
     {"top",      builtin_top,      "Live kernel process & memory monitor",      "top [-n iterations]"},
     {"ps",       builtin_ps,       "List active processes in kernel table", "ps"},
     {"mem",      builtin_mem,      "Display physical RAM & heap metrics",   "mem"},
+    {"whoami",   builtin_whoami,   "Display current user identity & CPU ring privilege", "whoami"},
+    {"diskinfo", builtin_diskinfo, "Query ATA hardware drive & MiniFS status", "diskinfo"},
+    {"yield",    builtin_yield,    "Voluntarily yield CPU time-slice",      "yield"},
+    {"alloc",    builtin_alloc,    "Allocate dynamic kernel memory",        "alloc <bytes>"},
+    {"free",     builtin_free,     "Release allocated kernel memory",       "free <hex_address>"},
+    {"reap",     builtin_reap,     "Reap terminated zombie process",        "reap <pid>"},
+    {"memtest",  builtin_memtest,  "Run kernel memory verification suite",  "memtest"},
     {"spawn",    builtin_spawn,    "Spawn background worker task",          "spawn [name]"},
     {"kill",     builtin_kill,     "Terminate process by PID",              "kill <pid>"},
     {"echo",     builtin_echo,     "Display a line of text",                "echo [-n] [string...]"},
