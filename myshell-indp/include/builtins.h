@@ -34,6 +34,7 @@ int builtin_ps(int argc, char **argv, ShellState *state);
 int builtin_nano(int argc, char **argv, ShellState *state);
 int builtin_observe(int argc, char **argv, ShellState *state);
 int builtin_whoami(int argc, char **argv, ShellState *state);
+int builtin_sched(int argc, char **argv, ShellState *state);
 int builtin_diskinfo(int argc, char **argv, ShellState *state);
 int builtin_yield(int argc, char **argv, ShellState *state);
 int builtin_alloc(int argc, char **argv, ShellState *state);

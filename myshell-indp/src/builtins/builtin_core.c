@@ -282,6 +282,90 @@ int builtin_whoami(int argc, char **argv, ShellState *state)
     return 0;
 }
 
+int builtin_sched(int argc, char **argv, ShellState *state)
+{
+    (void)state;
+    if (argc < 2) {
+        int64_t policy = sys_call(SYS_SCHED_GET, 0, 0, 0, 0);
+        int64_t quantum = sys_call(SYS_SCHED_GET, 1, 0, 0, 0);
+        int64_t cs = sys_call(SYS_SCHED_GET, 2, 0, 0, 0);
+        int64_t dec = sys_call(SYS_SCHED_GET, 3, 0, 0, 0);
+
+        const char *pol_str = "Round Robin (RR)";
+        if (policy == SCHED_POLICY_PRIORITY) pol_str = "Priority Preemptive";
+        else if (policy == SCHED_POLICY_FCFS) pol_str = "First-Come First-Served (FCFS)";
+
+        printf("\n%sCPU Scheduler Subsystem Configuration:%s\n", COLOR_BOLD, COLOR_RESET);
+        printf("  Active Policy:    %s%s%s\n", COLOR_GREEN, pol_str, COLOR_RESET);
+        printf("  Time Quantum:     %ld ticks (%ld ms @ 100 Hz PIT)\n", (long)quantum, (long)quantum * 10);
+        printf("  Context Switches: %ld\n", (long)cs);
+        printf("  Decisions Made:   %ld\n", (long)dec);
+        printf("\n%sReconfiguration Options:%s\n", COLOR_BOLD, COLOR_RESET);
+        printf("  sched rr [ticks]        - Switch to Round Robin (default quantum 5 ticks = 50ms)\n");
+        printf("  sched priority          - Switch to Priority Preemptive scheduling\n");
+        printf("  sched fcfs              - Switch to First-Come First-Served scheduling\n");
+        printf("  sched quantum <ticks>   - Adjust time slice quantum (1 tick = 10ms)\n");
+        printf("  sched prio <pid> <1-10> - Set priority for a process\n\n");
+        return 0;
+    }
+
+    if (strcmp(argv[1], "rr") == 0) {
+        uint64_t q = 5;
+        if (argc > 2) q = (uint64_t)atoi(argv[2]);
+        if (q == 0) q = 5;
+        sys_call(SYS_SCHED_SET, SCHED_POLICY_RR, q, 0, 0);
+        printf("Switched CPU scheduler to \033[1;32mRound Robin (RR)\033[0m with %lu ticks (%lu ms) quantum.\n",
+               (unsigned long)q, (unsigned long)(q * 10));
+        return 0;
+    }
+
+    if (strcmp(argv[1], "priority") == 0) {
+        sys_call(SYS_SCHED_SET, SCHED_POLICY_PRIORITY, 0, 0, 0);
+        printf("Switched CPU scheduler to \033[1;32mPriority Preemptive Scheduling\033[0m.\n");
+        return 0;
+    }
+
+    if (strcmp(argv[1], "fcfs") == 0) {
+        sys_call(SYS_SCHED_SET, SCHED_POLICY_FCFS, 0, 0, 0);
+        printf("Switched CPU scheduler to \033[1;32mFirst-Come First-Served (FCFS)\033[0m.\n");
+        return 0;
+    }
+
+    if (strcmp(argv[1], "quantum") == 0) {
+        if (argc < 3) {
+            printf("Usage: sched quantum <ticks>\n");
+            return 1;
+        }
+        uint64_t q = (uint64_t)atoi(argv[2]);
+        if (q == 0 || q > 100) {
+            printf("sched: quantum must be between 1 and 100 ticks (10ms - 1000ms)\n");
+            return 1;
+        }
+        sys_call(SYS_SCHED_SET, (uint64_t)-1, q, 0, 0);
+        printf("Scheduler time quantum updated to %lu ticks (%lu ms).\n", (unsigned long)q, (unsigned long)(q * 10));
+        return 0;
+    }
+
+    if (strcmp(argv[1], "prio") == 0) {
+        if (argc < 4) {
+            printf("Usage: sched prio <pid> <priority (1-10)>\n");
+            return 1;
+        }
+        uint32_t pid = (uint32_t)atoi(argv[2]);
+        uint32_t prio = (uint32_t)atoi(argv[3]);
+        int64_t ret = sys_call(SYS_SCHED_SET, (uint64_t)-1, 0, pid, prio);
+        if (ret == 0) {
+            printf("Updated process PID %u priority to %u.\n", pid, prio);
+            return 0;
+        }
+        printf("Failed to set priority for PID %u.\n", pid);
+        return 1;
+    }
+
+    printf("Unknown scheduling option '%s'. Type 'sched' for help.\n", argv[1]);
+    return 1;
+}
+
 int builtin_diskinfo(int argc, char **argv, ShellState *state)
 {
     (void)argc;
@@ -418,6 +502,7 @@ static const BuiltinCommand BUILTINS[] = {
     {"ps",       builtin_ps,       "List active processes in kernel table", "ps"},
     {"mem",      builtin_mem,      "Display physical RAM & heap metrics",   "mem"},
     {"whoami",   builtin_whoami,   "Display current user identity & CPU ring privilege", "whoami"},
+    {"sched",    builtin_sched,    "Inspect or reconfigure CPU scheduler",  "sched [rr|priority|fcfs|quantum|prio]"},
     {"diskinfo", builtin_diskinfo, "Query ATA hardware drive & MiniFS status", "diskinfo"},
     {"yield",    builtin_yield,    "Voluntarily yield CPU time-slice",      "yield"},
     {"alloc",    builtin_alloc,    "Allocate dynamic kernel memory",        "alloc <bytes>"},

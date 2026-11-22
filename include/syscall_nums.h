@@ -37,7 +37,9 @@
 #define SYS_SHUTDOWN     31
 
 /* Schedulers */
-#define SCHED_POLICY_RR       0  /* Round Robin (Default & Only Supported Policy) */
+#define SCHED_POLICY_RR       0  /* Round Robin */
+#define SCHED_POLICY_PRIORITY 1  /* Priority-based Preemptive */
+#define SCHED_POLICY_FCFS     2  /* First-Come First-Served */
 
 /* Process Lifecycle States */
 #define USER_PROC_UNUSED      0

@@ -575,17 +575,34 @@ void syscall_dispatcher(interrupt_frame_t *frame) {
         }
 
         case SYS_SCHED_GET: {
-            ret = (int64_t)scheduler_get_policy();
+            if (arg1 == 1) {
+                ret = (int64_t)scheduler_get_quantum();
+            } else if (arg1 == 2) {
+                ret = (int64_t)scheduler_get_context_switch_count();
+            } else if (arg1 == 3) {
+                ret = (int64_t)scheduler_get_decision_count();
+            } else {
+                ret = (int64_t)scheduler_get_policy();
+            }
             break;
         }
 
         case SYS_SCHED_SET: {
             int policy = (int)arg1;
-            if (policy != SCHED_POLICY_RR) {
-                ret = -22; // -EINVAL (Only Round Robin supported)
+            uint64_t quantum = (uint64_t)arg2;
+            uint32_t target_pid = (uint32_t)arg3;
+            uint32_t new_prio = (uint32_t)arg4;
+
+            if (policy >= 0) {
+                scheduler_set_policy(policy);
+            }
+            if (quantum > 0) {
+                scheduler_set_quantum(quantum);
+            }
+            if (target_pid > 0 && new_prio > 0) {
+                ret = (int64_t)process_set_priority(target_pid, new_prio);
                 break;
             }
-            scheduler_set_policy(policy);
             ret = 0;
             break;
         }

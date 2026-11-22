@@ -17,6 +17,7 @@ static process_t *current_proc = NULL;
 static uint32_t   next_pid = 1;
 
 static int        current_policy = SCHED_POLICY_RR;
+static uint64_t   current_quantum = DEFAULT_QUANTUM;
 static uint64_t   stat_decisions = 0;
 static uint64_t   stat_context_switches = 0;
 
@@ -173,20 +174,47 @@ void process_exit(interrupt_frame_t *frame, int code) {
 }
 
 void scheduler_set_policy(int policy) {
-    if (policy == SCHED_POLICY_RR) {
-        current_policy = SCHED_POLICY_RR;
-        KLOG_INFO("Scheduler policy confirmed: %s", scheduler_get_policy_name());
+    if (policy == SCHED_POLICY_RR || policy == SCHED_POLICY_PRIORITY || policy == SCHED_POLICY_FCFS) {
+        current_policy = policy;
+        KLOG_INFO("Scheduler policy switched: %s", scheduler_get_policy_name());
     } else {
-        KLOG_WARN("scheduler_set_policy: Rejected policy %d (Only Round Robin supported)", policy);
+        KLOG_WARN("scheduler_set_policy: Rejected invalid policy %d", policy);
     }
 }
 
 int scheduler_get_policy(void) {
-    return SCHED_POLICY_RR;
+    return current_policy;
+}
+
+void scheduler_set_quantum(uint64_t quantum) {
+    if (quantum > 0 && quantum <= 100) {
+        current_quantum = quantum;
+        KLOG_INFO("Scheduler quantum set to %lu ticks (%lu ms)", current_quantum, current_quantum * 10);
+    }
+}
+
+uint64_t scheduler_get_quantum(void) {
+    return current_quantum;
+}
+
+int process_set_priority(uint32_t pid, uint32_t priority) {
+    if (priority == 0 || priority > 10) return -1;
+    for (size_t i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].pid == pid && process_table[i].state != PROC_UNUSED) {
+            process_table[i].priority = priority;
+            return 0;
+        }
+    }
+    return -2;
 }
 
 const char *scheduler_get_policy_name(void) {
-    return "Round Robin (RR)";
+    switch (current_policy) {
+        case SCHED_POLICY_RR:       return "Round Robin (RR)";
+        case SCHED_POLICY_PRIORITY: return "Priority Preemptive";
+        case SCHED_POLICY_FCFS:     return "First-Come First-Served (FCFS)";
+        default:                    return "Unknown";
+    }
 }
 
 uint64_t scheduler_get_context_switch_count(void) {
@@ -200,7 +228,33 @@ uint64_t scheduler_get_decision_count(void) {
 static process_t *scheduler_pick_next(void) {
     stat_decisions++;
 
-    /* Round Robin Scheduling (Default & Sole Policy) */
+    if (current_policy == SCHED_POLICY_PRIORITY) {
+        /* Highest priority ready process wins */
+        process_t *best = NULL;
+        for (size_t i = 1; i < MAX_PROCESSES; i++) {
+            if (process_table[i].state == PROC_READY || process_table[i].state == PROC_RUNNING) {
+                if (!best || process_table[i].priority > best->priority) {
+                    best = &process_table[i];
+                }
+            }
+        }
+        return best ? best : &process_table[0];
+    }
+
+    if (current_policy == SCHED_POLICY_FCFS) {
+        /* Keep running the active process until it blocks, terminates, or yields */
+        if (current_proc && current_proc->state == PROC_RUNNING && current_proc->pid != 0) {
+            return current_proc;
+        }
+        for (size_t i = 1; i < MAX_PROCESSES; i++) {
+            if (process_table[i].state == PROC_READY) {
+                return &process_table[i];
+            }
+        }
+        return &process_table[0];
+    }
+
+    /* Default: Round Robin Scheduling */
     size_t current_idx = current_proc ? (current_proc - process_table) : 0;
     for (size_t offset = 1; offset < MAX_PROCESSES; offset++) {
         size_t candidate = (current_idx + offset) % MAX_PROCESSES;
@@ -218,12 +272,19 @@ void scheduler_tick(interrupt_frame_t *frame) {
 
     current_proc->cpu_ticks++;
 
-    if (current_proc->time_slice > 0) {
-        current_proc->time_slice--;
+    if (current_policy != SCHED_POLICY_FCFS) {
+        if (current_proc->time_slice > 0) {
+            current_proc->time_slice--;
+        }
+    }
+
+    if (current_policy == SCHED_POLICY_FCFS) {
+        /* Non-preemptive in FCFS */
+        return;
     }
 
     if (current_proc->time_slice == 0) {
-        current_proc->time_slice = DEFAULT_QUANTUM;
+        current_proc->time_slice = current_quantum;
 
         process_t *next_proc = scheduler_pick_next();
         if (next_proc && next_proc != current_proc) {

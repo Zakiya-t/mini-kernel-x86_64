@@ -36,6 +36,10 @@
 #define SYS_SEEK         30
 #define SYS_SHUTDOWN     31
 
+#define SCHED_POLICY_RR       0
+#define SCHED_POLICY_PRIORITY 1
+#define SCHED_POLICY_FCFS     2
+
 #define USER_FS_TYPE_UNUSED   0
 #define USER_FS_TYPE_FILE     1
 #define USER_FS_TYPE_DIR      2
