@@ -18,6 +18,20 @@ static void format_path(const char *raw_path, char *out_path, size_t out_size)
     }
 }
 
+void ui_print_banner(void)
+{
+    printf("=======================================================\n");
+    printf("   __  __       ____  _          _ _                  \n");
+    printf("  |  \\/  |_   _/ ___|| |__   ___| | |                 \n");
+    printf("  | |\\/| | | | \\___ \\| '_ \\ / _ \\ | |                 \n");
+    printf("  | |  | | |_| |___) | | | |  __/ | |                 \n");
+    printf("  |_|  |_|\\__, |____/|_| |_|\\___|_|_|  v%s         \n", SHELL_VERSION);
+    printf("          |___/                                        \n");
+    printf("  A Modern, Modular Monolithic Shell                   \n");
+    printf("  Type 'help' to list built-ins, or 'sysinfo' for dashboard.\n");
+    printf("=======================================================\n\n");
+}
+
 void ui_render_prompt(const ShellState *state)
 {
     const char *user = getenv("USER");

@@ -115,9 +115,9 @@ static void get_uptime(char *dest, size_t max_len)
     FILE *f = fopen("/proc/uptime", "r");
     if (!f) return;
 
-    double up_sec = 0;
-    if (fscanf(f, "%lf", &up_sec) == 1) {
-        long sec = (long)up_sec;
+    char line[64];
+    if (fgets(line, sizeof(line), f)) {
+        long sec = atol(line);
         long days = sec / 86400;
         long hours = (sec % 86400) / 3600;
         long mins = (sec % 3600) / 60;
@@ -147,11 +147,9 @@ int builtin_sysinfo(int argc, char **argv, ShellState *state)
 
     char host[128] = "localhost";
 #ifndef _WIN32
-    if (gethostname(host, sizeof(host)) != 0 || strlen(host) == 0) {
-        struct utsname un_h;
-        if (uname(&un_h) == 0) {
-            strncpy(host, un_h.nodename, sizeof(host) - 1);
-        }
+    struct utsname un_h;
+    if (uname(&un_h) == 0) {
+        strncpy(host, un_h.nodename, sizeof(host) - 1);
     }
 #else
     const char *h = getenv("COMPUTERNAME");

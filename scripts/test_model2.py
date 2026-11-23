@@ -129,7 +129,84 @@ def test_model2():
         proc.kill()
         return False
 
-    print("\n[PASS] ps succeeded! Testing 'mem'...")
+    print("\n[PASS] ps succeeded! Testing 'whoami'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"whoami\n")
+    proc.stdin.flush()
+    if not read_until("Ring 3", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] whoami succeeded! Testing 'sched' configuration...")
+    time.sleep(0.3)
+    proc.stdin.write(b"sched\n")
+    proc.stdin.flush()
+    if not read_until("Active Policy:", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] sched status succeeded! Testing 'sched quantum 10'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"sched quantum 10\n")
+    proc.stdin.flush()
+    if not read_until("Scheduler time quantum updated to 10 ticks", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] sched quantum succeeded! Testing 'sched priority'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"sched priority\n")
+    proc.stdin.flush()
+    if not read_until("Priority Preemptive", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] sched priority succeeded! Testing 'sched rr 5'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"sched rr 5\n")
+    proc.stdin.flush()
+    if not read_until("Round Robin (RR)", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] sched rr succeeded! Testing 'diskinfo'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"diskinfo\n")
+    proc.stdin.flush()
+    if not read_until("QEMU HARDDISK", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] diskinfo succeeded! Testing 'memtest'...")
+    time.sleep(0.3)
+    proc.stdin.write(b"memtest\n")
+    proc.stdin.flush()
+    if not read_until("[PASS]", timeout=6):
+        proc.kill()
+        return False
+    if not read_until("❯", timeout=6):
+        proc.kill()
+        return False
+
+    print("\n[PASS] memtest succeeded! Testing 'mem'...")
     time.sleep(0.3)
     proc.stdin.write(b"mem\n")
     proc.stdin.flush()

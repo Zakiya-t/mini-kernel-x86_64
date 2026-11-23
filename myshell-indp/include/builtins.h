@@ -32,14 +32,15 @@ int builtin_lscpu(int argc, char **argv, ShellState *state);
 int builtin_top(int argc, char **argv, ShellState *state);
 int builtin_ps(int argc, char **argv, ShellState *state);
 int builtin_nano(int argc, char **argv, ShellState *state);
-<<<<<<< HEAD
 int builtin_observe(int argc, char **argv, ShellState *state);
-=======
-int builtin_sched_run(int argc, char **argv, ShellState *state);
-int builtin_sched_bench(int argc, char **argv, ShellState *state);
-int builtin_inspect(int argc, char **argv, ShellState *state);
-int builtin_telemetry(int argc, char **argv, ShellState *state);
->>>>>>> 07cedf0be6f57713d507d53a6c5198da7886465b
+int builtin_whoami(int argc, char **argv, ShellState *state);
+int builtin_sched(int argc, char **argv, ShellState *state);
+int builtin_diskinfo(int argc, char **argv, ShellState *state);
+int builtin_yield(int argc, char **argv, ShellState *state);
+int builtin_alloc(int argc, char **argv, ShellState *state);
+int builtin_free(int argc, char **argv, ShellState *state);
+int builtin_reap(int argc, char **argv, ShellState *state);
+int builtin_memtest(int argc, char **argv, ShellState *state);
 int builtin_exit(int argc, char **argv, ShellState *state);
 
 /* Builtin dispatcher interface */

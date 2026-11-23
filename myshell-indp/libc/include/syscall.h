@@ -36,6 +36,10 @@
 #define SYS_SEEK         30
 #define SYS_SHUTDOWN     31
 
+#define SCHED_POLICY_RR       0
+#define SCHED_POLICY_PRIORITY 1
+#define SCHED_POLICY_FCFS     2
+
 #define USER_FS_TYPE_UNUSED   0
 #define USER_FS_TYPE_FILE     1
 #define USER_FS_TYPE_DIR      2
@@ -87,6 +91,14 @@ typedef struct {
     uint32_t size;
     char     name[28];
 } user_fs_dirent_t;
+
+typedef struct {
+    bool     present;
+    char     model[41];
+    char     serial[21];
+    uint32_t total_sectors;
+    uint32_t size_mb;
+} user_ata_device_info_t;
 
 int64_t sys_call(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4);
 

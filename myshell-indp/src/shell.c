@@ -14,11 +14,7 @@ void shell_state_init(ShellState *state)
 {
     state->last_exit_code = 0;
     state->is_running = true;
-<<<<<<< HEAD
     state->observer_enabled = false;
-=======
-    state->telemetry_enabled = false;
->>>>>>> 07cedf0be6f57713d507d53a6c5198da7886465b
     state->prev_dir[0] = '\0';
     state->history_count = 0;
     state->history_capacity = 32;

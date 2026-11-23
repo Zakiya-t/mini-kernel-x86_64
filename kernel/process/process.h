@@ -54,6 +54,9 @@ void       scheduler_tick(interrupt_frame_t *frame);
 void       scheduler_set_policy(int policy);
 int        scheduler_get_policy(void);
 const char*scheduler_get_policy_name(void);
+void       scheduler_set_quantum(uint64_t quantum);
+uint64_t   scheduler_get_quantum(void);
+int        process_set_priority(uint32_t pid, uint32_t priority);
 uint64_t   scheduler_get_context_switch_count(void);
 uint64_t   scheduler_get_decision_count(void);
 

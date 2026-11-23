@@ -217,6 +217,12 @@ void isr_dispatch(interrupt_frame_t *frame) {
             cli();
             while (1) { hlt(); }
         }
+
+        /* If exception occurred in User mode (Ring 3), cleanly terminate faulting process */
+        extern void process_exit(interrupt_frame_t *frame, int code);
+        kprintf("\n[PROCESS] Terminating user process due to CPU Exception %u (%s)\n",
+                (uint32_t)frame->int_no, exception_messages[frame->int_no]);
+        process_exit(frame, 128 + (int)frame->int_no);
         return;
     }
 
