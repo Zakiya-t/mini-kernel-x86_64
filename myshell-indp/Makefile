@@ -7,6 +7,7 @@ CFLAGS = -Wall -Wextra -std=gnu11 -m64 -ffreestanding -fno-builtin -fno-stack-pr
 NASMFLAGS = -f elf64
 LDFLAGS = -nostdlib -no-pie -Wl,-T,linker.ld -Wl,--build-id=none
 
+BUILD_DIR = build
 TARGET = myshell.elf
 
 # ── Libc Sources ─────────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ LIBC_C_SRCS = libc/src/syscall.c \
               libc/src/stat.c \
               libc/src/term.c
 
-CRT0_OBJ = libc/src/crt0.o
+CRT0_SRC = libc/src/crt0.asm
 
 # ── Shell Sources ────────────────────────────────────────────────────────────
 SHELL_SRCS = src/main.c \
@@ -37,7 +38,10 @@ SHELL_SRCS = src/main.c \
              src/builtins/builtin_top.c \
              src/builtins/builtin_nano.c
 
-OBJS = $(CRT0_OBJ) $(LIBC_C_SRCS:.c=.o) $(SHELL_SRCS:.c=.o)
+CRT0_OBJ = $(BUILD_DIR)/$(CRT0_SRC:.asm=.o)
+LIBC_OBJS = $(patsubst %.c, $(BUILD_DIR)/%.o, $(LIBC_C_SRCS))
+SHELL_OBJS = $(patsubst %.c, $(BUILD_DIR)/%.o, $(SHELL_SRCS))
+OBJS = $(CRT0_OBJ) $(LIBC_OBJS) $(SHELL_OBJS)
 
 all: $(TARGET)
 
@@ -48,19 +52,15 @@ $(TARGET): $(OBJS) linker.ld
 	@readelf -h $(TARGET) | grep -E "Class|Machine|Entry"
 	@echo "=========================================================="
 
-libc/src/%.o: libc/src/%.asm
+$(BUILD_DIR)/%.o: %.asm
+	@mkdir -p $(dir $@)
 	$(NASM) $(NASMFLAGS) $< -o $@
 
-libc/src/%.o: libc/src/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-src/builtins/%.o: src/builtins/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-src/%.o: src/%.c
+$(BUILD_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -rf $(BUILD_DIR) libc/src/*.o src/*.o src/builtins/*.o $(TARGET)
 
 .PHONY: all clean

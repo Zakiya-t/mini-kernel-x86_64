@@ -1,296 +1,99 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <dirent.h>
-#include <ctype.h>
-#include <time.h>
-#include <errno.h>
 #include "builtins.h"
 #include "ui.h"
+#include "syscall.h"
 
-#ifndef _WIN32
-#include <termios.h>
-#include <unistd.h>
-#include <sys/select.h>
-#endif
-
-typedef struct {
-    int pid;
-    char user[32];
-    char state;
-    long res_kb;
-    char comm[64];
-} ProcessInfo;
-
-#ifndef _WIN32
-static struct termios orig_termios;
-static bool raw_mode_active = false;
-
-static void disable_raw_mode(void)
-{
-    if (raw_mode_active) {
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
-        raw_mode_active = false;
-        /* Exit alternate screen and show cursor */
-        printf("\033[?1049l\033[?25h");
-        fflush(stdout);
-    }
-}
-
-static void enable_raw_mode(void)
-{
-    if (!isatty(STDIN_FILENO))
-        return;
-
-    tcgetattr(STDIN_FILENO, &orig_termios);
-    atexit(disable_raw_mode);
-
-    struct termios raw = orig_termios;
-    raw.c_lflag &= ~(ECHO | ICANON);
-    raw.c_cc[VMIN] = 0;
-    raw.c_cc[VTIME] = 0;
-
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
-    raw_mode_active = true;
-    /* Switch to alternate screen and hide cursor */
-    printf("\033[?1049h\033[?25l");
-    fflush(stdout);
-}
-
-static bool check_quit_key(void)
-{
-    if (!isatty(STDIN_FILENO))
-        return false;
-
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-
-    struct timeval tv = {1, 0}; /* Wait up to 1 second */
-    int ret = select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
-
-    if (ret > 0) {
-        char c;
-        if (read(STDIN_FILENO, &c, 1) == 1) {
-            if (c == 'q' || c == 'Q' || c == 3) /* 'q' or Ctrl+C */
-                return true;
-        }
-    }
-    return false;
-}
-
-static void read_mem_stats(long *total_kb, long *free_kb, long *avail_kb)
-{
-    *total_kb = *free_kb = *avail_kb = 0;
-    FILE *f = fopen("/proc/meminfo", "r");
-    if (!f) return;
-
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "MemTotal:", 9) == 0)
-            sscanf(line + 9, "%ld", total_kb);
-        else if (strncmp(line, "MemFree:", 8) == 0)
-            sscanf(line + 8, "%ld", free_kb);
-        else if (strncmp(line, "MemAvailable:", 13) == 0)
-            sscanf(line + 13, "%ld", avail_kb);
-    }
-    fclose(f);
-}
-
-static void read_cpu_ticks(unsigned long long *work, unsigned long long *total)
-{
-    *work = *total = 0;
-    FILE *f = fopen("/proc/stat", "r");
-    if (!f) return;
-
-    char line[256];
-    if (fgets(line, sizeof(line), f) && strncmp(line, "cpu ", 4) == 0) {
-        unsigned long long user, nice, sys, idle, iowait, irq, softirq, steal;
-        if (sscanf(line + 4, "%llu %llu %llu %llu %llu %llu %llu %llu",
-                   &user, &nice, &sys, &idle, &iowait, &irq, &softirq, &steal) >= 4) {
-            *work = user + nice + sys + irq + softirq + steal;
-            *total = *work + idle + iowait;
-        }
-    }
-    fclose(f);
-}
-
-static int collect_processes(ProcessInfo *procs, int max_procs, int *running_count, int *sleeping_count)
-{
-    *running_count = 0;
-    *sleeping_count = 0;
-    int count = 0;
-
-    DIR *dir = opendir("/proc");
-    if (!dir) return 0;
-
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        if (!isdigit(ent->d_name[0]))
-            continue;
-
-        int pid = atoi(ent->d_name);
-        char path[256];
-
-        /* Read process comm */
-        snprintf(path, sizeof(path), "/proc/%d/stat", pid);
-        FILE *f = fopen(path, "r");
-        if (!f) continue;
-
-        char buf[512];
-        if (fgets(buf, sizeof(buf), f)) {
-            char comm[64] = "unknown";
-            char state_char = '?';
-            char *open_p = strchr(buf, '(');
-            char *close_p = strrchr(buf, ')');
-
-            if (open_p && close_p && close_p > open_p) {
-                int comm_len = close_p - open_p - 1;
-                if (comm_len > 63) comm_len = 63;
-                strncpy(comm, open_p + 1, comm_len);
-                comm[comm_len] = '\0';
-                state_char = *(close_p + 2);
-            }
-
-            if (state_char == 'R')
-                (*running_count)++;
-            else
-                (*sleeping_count)++;
-
-            if (count < max_procs) {
-                procs[count].pid = pid;
-                strncpy(procs[count].comm, comm, sizeof(procs[count].comm) - 1);
-                procs[count].state = state_char;
-                procs[count].res_kb = 0;
-
-                /* Read memory (VmRSS) from /proc/[pid]/status */
-                char status_path[256];
-                snprintf(status_path, sizeof(status_path), "/proc/%d/status", pid);
-                FILE *fs = fopen(status_path, "r");
-                if (fs) {
-                    char sline[256];
-                    while (fgets(sline, sizeof(sline), fs)) {
-                        if (strncmp(sline, "VmRSS:", 6) == 0) {
-                            sscanf(sline + 6, "%ld", &procs[count].res_kb);
-                            break;
-                        }
-                    }
-                    fclose(fs);
-                }
-                count++;
-            }
-        }
-        fclose(f);
-    }
-    closedir(dir);
-    return count;
-}
-#endif
-
+/*
+ * Built-in: top
+ * Live MiniKernel Process, Scheduler & Memory Monitor using int 0x80 syscalls:
+ * - SYS_PROC_LIST  (E1 Process table & CPU ticks)
+ * - SYS_SCHED_GET  (E1 Policy, quantum & context switch counters)
+ * - SYS_MEM_STATS  (E2 Physical RAM frames & kernel heap usage)
+ */
 int builtin_top(int argc, char **argv, ShellState *state)
 {
     (void)state;
 
-#ifndef _WIN32
-    int max_iterations = -1; /* default: run until 'q' */
+    int max_iterations = 1;
     if (argc >= 3 && strcmp(argv[1], "-n") == 0) {
         max_iterations = atoi(argv[2]);
-    }
-
-    if (!isatty(STDIN_FILENO) && max_iterations == -1) {
-        max_iterations = 1;
-    }
-
-    enable_raw_mode();
-
-    unsigned long long prev_work = 0, prev_total = 0;
-    read_cpu_ticks(&prev_work, &prev_total);
-
-    int iter = 0;
-    while (max_iterations == -1 || iter < max_iterations) {
-        iter++;
-
-        /* Clear screen & move to top */
-        printf("\033[H\033[2J");
-
-        /* Current time */
-        time_t now = time(NULL);
-        struct tm *tm_now = localtime(&now);
-        char time_str[32];
-        strftime(time_str, sizeof(time_str), "%H:%M:%S", tm_now);
-
-        /* Read live kernel stats */
-        unsigned long long work = 0, total = 0;
-        read_cpu_ticks(&work, &total);
-        double cpu_pct = 0.0;
-        if (total > prev_total) {
-            cpu_pct = ((double)(work - prev_work) / (double)(total - prev_total)) * 100.0;
+        if (max_iterations <= 0) {
+            max_iterations = 1;
         }
-        prev_work = work;
-        prev_total = total;
+    }
 
-        long mem_total = 0, mem_free = 0, mem_avail = 0;
-        read_mem_stats(&mem_total, &mem_free, &mem_avail);
-        long mem_used = mem_total - mem_avail;
+    const char *state_names[] = {"UNUSED", "EMBRYO", "READY", "RUNNING", "BLOCKED", "TERMINATED"};
 
-        ProcessInfo procs[32];
-        int running_count = 0, sleeping_count = 0;
-        int num_procs = collect_processes(procs, 18, &running_count, &sleeping_count);
+    for (int iter = 0; iter < max_iterations; iter++) {
+        if (max_iterations > 1) {
+            printf("\033[H\033[2J");
+        }
 
-        /* Header row 1: top banner */
-        printf("%stop - %s up,  %d tasks: %d running, %d sleeping%s\n",
-               COLOR_BOLD, time_str, num_procs, running_count, sleeping_count, COLOR_RESET);
+        int64_t policy  = sys_call(SYS_SCHED_GET, 0, 0, 0, 0);
+        int64_t quantum = sys_call(SYS_SCHED_GET, 1, 0, 0, 0);
+        int64_t csw     = sys_call(SYS_SCHED_GET, 2, 0, 0, 0);
+        int64_t dec     = sys_call(SYS_SCHED_GET, 3, 0, 0, 0);
 
-        /* Header row 2: CPU stats from kernel */
-        printf("%%Cpu(s): %s%5.1f%%%s user/sys, %s%5.1f%%%s idle  [Linux Kernel /proc/stat]\n",
-               COLOR_BRIGHT_GREEN, cpu_pct, COLOR_RESET,
-               COLOR_DIM, 100.0 - cpu_pct, COLOR_RESET);
+        const char *pol_str = "Round Robin (RR)";
+        if (policy == SCHED_POLICY_PRIORITY) pol_str = "Priority Preemptive";
+        else if (policy == SCHED_POLICY_FCFS) pol_str = "FCFS";
 
-        /* Header row 3: Memory stats from kernel */
-        printf("MiB Mem : %s%6.1f%s total, %s%6.1f%s free, %s%6.1f%s used  [/proc/meminfo]\n",
-               COLOR_BOLD, (double)mem_total / 1024.0, COLOR_RESET,
-               COLOR_BRIGHT_GREEN, (double)mem_free / 1024.0, COLOR_RESET,
-               COLOR_BRIGHT_YELLOW, (double)mem_used / 1024.0, COLOR_RESET);
+        user_mem_stats_t mem_st;
+        memset(&mem_st, 0, sizeof(mem_st));
+        sys_call(SYS_MEM_STATS, (uint64_t)(uintptr_t)&mem_st, 0, 0, 0);
 
-        printf("\n%s\033[7m  PID   S      RES  COMMAND                                   \033[0m\n", COLOR_BOLD);
+        uint64_t total_mb = mem_st.total_phys_ram / (1024 * 1024);
+        uint64_t free_mb  = mem_st.free_phys_ram / (1024 * 1024);
+        uint64_t used_mb  = (total_mb >= free_mb) ? (total_mb - free_mb) : 0;
 
-        for (int i = 0; i < num_procs && i < 15; i++) {
-            char size_str[16];
-            if (procs[i].res_kb < 1024)
-                snprintf(size_str, sizeof(size_str), "%4ld KB", procs[i].res_kb);
-            else
-                snprintf(size_str, sizeof(size_str), "%4.1f MB", (double)procs[i].res_kb / 1024.0);
+        user_proc_info_t procs[32];
+        int64_t count = sys_call(SYS_PROC_LIST, (uint64_t)(uintptr_t)procs, 32, 0, 0);
+        if (count < 0) count = 0;
 
-            const char *state_color = (procs[i].state == 'R') ? COLOR_BRIGHT_GREEN : COLOR_DIM;
+        int running_cnt = 0, ready_cnt = 0, other_cnt = 0;
+        for (int i = 0; i < count; i++) {
+            if (procs[i].state == 3) running_cnt++;      /* PROC_RUNNING */
+            else if (procs[i].state == 2) ready_cnt++;   /* PROC_READY */
+            else other_cnt++;
+        }
 
-            printf("%5d   %s%c%s   %8s  %-35s\n",
+        printf("\n%sMiniKernel top (snapshot %d/%d)%s  Tasks: %ld total (%d running, %d ready, %d other)\n",
+               COLOR_BOLD, iter + 1, max_iterations, COLOR_RESET,
+               (long)count, running_cnt, ready_cnt, other_cnt);
+        printf("Scheduler: %s%s%s | Quantum: %ld ticks (%ld ms) | Switches: %ld | Decisions: %ld\n",
+               COLOR_BRIGHT_GREEN, pol_str, COLOR_RESET,
+               (long)quantum, (long)quantum * 10, (long)csw, (long)dec);
+        printf("Phys Mem : %s%lu MiB%s total, %s%lu MiB%s free, %s%lu MiB%s used | Heap: %lu KiB / %lu MiB\n",
+               COLOR_BOLD, total_mb, COLOR_RESET,
+               COLOR_BRIGHT_GREEN, free_mb, COLOR_RESET,
+               COLOR_BRIGHT_YELLOW, used_mb, COLOR_RESET,
+               mem_st.heap_used / 1024, mem_st.heap_total / (1024 * 1024));
+
+        printf("\n%s\033[7m  PID   PPID  RING  PRIO  STATE        TICKS     COMMAND                    \033[0m\n", COLOR_BOLD);
+
+        for (int i = 0; i < count; i++) {
+            const char *st_name = (procs[i].state < 6) ? state_names[procs[i].state] : "UNKNOWN";
+            const char *st_col  = (procs[i].state == 3) ? COLOR_BRIGHT_GREEN : COLOR_DIM;
+            printf("  %-5u %-5u %-5u %-5u %s%-12s%s %-9lu %s\n",
                    procs[i].pid,
-                   state_color, procs[i].state, COLOR_RESET,
-                   size_str,
-                   procs[i].comm);
+                   procs[i].ppid,
+                   procs[i].ring,
+                   procs[i].priority,
+                   st_col, st_name, COLOR_RESET,
+                   procs[i].cpu_ticks,
+                   procs[i].name);
         }
 
-        printf("\n%s[Direct Linux Kernel /proc reader]  Press %s'q'%s to exit%s\n",
-               COLOR_DIM, COLOR_BOLD, COLOR_RESET, COLOR_RESET);
+        printf("\n%s[Direct MiniKernel Syscalls: SYS_PROC_LIST + SYS_MEM_STATS + SYS_SCHED_GET via int 0x80]%s\n\n",
+               COLOR_DIM, COLOR_RESET);
         fflush(stdout);
 
-        if (max_iterations != -1 && iter >= max_iterations)
-            break;
-
-        if (check_quit_key())
-            break;
+        if (iter + 1 < max_iterations) {
+            sys_call(SYS_YIELD, 0, 0, 0, 0);
+        }
     }
 
-    disable_raw_mode();
-    putchar('\n');
     return 0;
-
-#else
-    (void)argc;
-    (void)argv;
-    printf("MyShell Native Top: Running in Win32 environment.\n");
-    printf("On Linux/WSL2, this directly samples /proc/stat, /proc/meminfo, and /proc/[pid]/.\n");
-    return 0;
-#endif
 }

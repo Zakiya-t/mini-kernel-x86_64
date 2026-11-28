@@ -4,28 +4,19 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 #include "syscall.h"
 #include "executor.h"
 #include "builtins.h"
 
-#ifdef _WIN32
-#include <io.h>
-#include <process.h>
-#define dup _dup
-#define dup2 _dup2
-#define close _close
-#define open _open
-#ifndef STDIN_FILENO
-#define STDIN_FILENO 0
-#define STDOUT_FILENO 1
-#endif
-#else
-#include <unistd.h>
-#include <sys/wait.h>
-#include <sys/types.h>
-#endif
-
+/*
+ * executor.c - Independent Ring 3 Command Executor
+ * All file redirections (open/close) and process creation (fork/execvp/waitpid)
+ * route strictly through freestanding libc wrappers into MiniKernel int 0x80 syscalls.
+ */
 static int apply_redirections(const SimpleCommand *cmd, int *saved_stdin, int *saved_stdout)
 {
     *saved_stdin = -1;
@@ -45,11 +36,7 @@ static int apply_redirections(const SimpleCommand *cmd, int *saved_stdin, int *s
     if (cmd->output_file) {
         *saved_stdout = dup(STDOUT_FILENO);
         int flags = O_WRONLY | O_CREAT | (cmd->append_output ? O_APPEND : O_TRUNC);
-#ifdef _WIN32
-        int fd = open(cmd->output_file, flags | _O_BINARY, 0666);
-#else
         int fd = open(cmd->output_file, flags, 0644);
-#endif
         if (fd < 0) {
             fprintf(stderr, "myshell: %s: %s\n", cmd->output_file, strerror(errno));
             if (*saved_stdin != -1) {
@@ -118,40 +105,28 @@ static int execute_single_command(const SimpleCommand *cmd, ShellState *state)
             fprintf(stderr, "myshell: %s: command not found\n", cmd->argv[0]);
             exit_code = 127;
         } else {
-#ifdef _WIN32
-        intptr_t ret = _spawnvp(_P_WAIT, cmd->argv[0], (const char * const *)cmd->argv);
-        if (ret == -1) {
-            if (errno == ENOENT)
-                fprintf(stderr, "myshell: %s: command not found\n", cmd->argv[0]);
-            else
-                fprintf(stderr, "myshell: %s: %s\n", cmd->argv[0], strerror(errno));
-            exit_code = 127;
-        } else {
-            exit_code = (int)ret;
-        }
-#else
-        pid_t pid = fork();
-        if (pid < 0) {
-            perror("myshell: fork");
-            exit_code = 1;
-        } else if (pid == 0) {
-            execvp(cmd->argv[0], cmd->argv);
-            if (errno == ENOENT) {
-                fprintf(stderr, "myshell: %s: command not found\n", cmd->argv[0]);
-                exit(127);
+            /* Spawns child ELF64 process via int 0x80 (SYS_FORK / SYS_EXEC / SYS_REAP) */
+            pid_t pid = fork();
+            if (pid < 0) {
+                perror("myshell: fork");
+                exit_code = 1;
+            } else if (pid == 0) {
+                execvp(cmd->argv[0], cmd->argv);
+                if (errno == ENOENT) {
+                    fprintf(stderr, "myshell: %s: command not found\n", cmd->argv[0]);
+                    exit(127);
+                } else {
+                    fprintf(stderr, "myshell: %s: %s\n", cmd->argv[0], strerror(errno));
+                    exit(126);
+                }
             } else {
-                fprintf(stderr, "myshell: %s: %s\n", cmd->argv[0], strerror(errno));
-                exit(126);
+                int status = 0;
+                waitpid(pid, &status, 0);
+                if (WIFEXITED(status))
+                    exit_code = WEXITSTATUS(status);
+                else if (WIFSIGNALED(status))
+                    exit_code = 128 + WTERMSIG(status);
             }
-        } else {
-            int status = 0;
-            waitpid(pid, &status, 0);
-            if (WIFEXITED(status))
-                exit_code = WEXITSTATUS(status);
-            else if (WIFSIGNALED(status))
-                exit_code = 128 + WTERMSIG(status);
-        }
-#endif
         }
     }
 
@@ -163,8 +138,7 @@ static int execute_single_command(const SimpleCommand *cmd, ShellState *state)
     return exit_code;
 }
 
-#ifndef _WIN32
-static int execute_pipeline_posix(const Pipeline *pipeline, ShellState *state)
+static int execute_pipeline_native(const Pipeline *pipeline, ShellState *state)
 {
     int prev_pipe_read = -1;
     pid_t *pids = malloc(sizeof(pid_t) * pipeline->command_count);
@@ -191,7 +165,6 @@ static int execute_pipeline_posix(const Pipeline *pipeline, ShellState *state)
         }
 
         if (pid == 0) {
-            /* Child process i */
             if (i > 0) {
                 dup2(prev_pipe_read, STDIN_FILENO);
                 close(prev_pipe_read);
@@ -250,7 +223,6 @@ static int execute_pipeline_posix(const Pipeline *pipeline, ShellState *state)
     free(pids);
     return last_exit_code;
 }
-#endif
 
 int executor_run_pipeline(const Pipeline *pipeline, ShellState *state)
 {
@@ -261,10 +233,5 @@ int executor_run_pipeline(const Pipeline *pipeline, ShellState *state)
         return execute_single_command(&pipeline->commands[0], state);
     }
 
-#ifndef _WIN32
-    return execute_pipeline_posix(pipeline, state);
-#else
-    fprintf(stderr, "myshell: multi-command pipelines require Linux/WSL2 POSIX environment\n");
-    return 1;
-#endif
+    return execute_pipeline_native(pipeline, state);
 }

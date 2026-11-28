@@ -2,25 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
 #include "builtins.h"
 #include "ui.h"
 #include "syscall.h"
 
-#ifdef _WIN32
-#include <direct.h>
-#define chdir _chdir
-#define getcwd _getcwd
-#else
-#include <unistd.h>
-#endif
-
 static void set_env_var(const char *key, const char *value)
 {
-#ifdef _WIN32
-    _putenv_s(key, value);
-#else
     setenv(key, value, 1);
-#endif
 }
 
 int builtin_cd(int argc, char **argv, ShellState *state)
@@ -29,13 +18,8 @@ int builtin_cd(int argc, char **argv, ShellState *state)
 
     if (argc < 2 || strcmp(argv[1], "~") == 0) {
         target = getenv("HOME");
-#ifdef _WIN32
-        if (!target)
-            target = getenv("USERPROFILE");
-#endif
         if (!target) {
-            fprintf(stderr, "myshell: cd: HOME not set\n");
-            return 1;
+            target = "/";
         }
     } else if (strcmp(argv[1], "-") == 0) {
         if (state->prev_dir[0] == '\0') {
@@ -496,9 +480,9 @@ static const BuiltinCommand BUILTINS[] = {
     {"touch",    builtin_touch,    "Create empty file or update timestamp", "touch <file...>"},
     {"write",    builtin_write,    "Write text line to file",               "write <file> <text>"},
     {"nano",     builtin_nano,     "Interactive terminal text editor",      "nano [file]"},
-    {"sysinfo",  builtin_sysinfo,  "Display modern system information",     "sysinfo"},
-    {"lscpu",    builtin_lscpu,    "Query CPU architecture from /proc/cpuinfo", "lscpu"},
-    {"top",      builtin_top,      "Live kernel process & memory monitor",      "top [-n iterations]"},
+    {"sysinfo",  builtin_sysinfo,  "Display MiniKernel system information",     "sysinfo"},
+    {"lscpu",    builtin_lscpu,    "Inspect x86-64 CPU via hardware CPUID",     "lscpu"},
+    {"top",      builtin_top,      "Live MiniKernel process & memory monitor",  "top [-n iterations]"},
     {"ps",       builtin_ps,       "List active processes in kernel table", "ps"},
     {"mem",      builtin_mem,      "Display physical RAM & heap metrics",   "mem"},
     {"whoami",   builtin_whoami,   "Display current user identity & CPU ring privilege", "whoami"},
@@ -545,10 +529,9 @@ int builtin_help(int argc, char **argv, ShellState *state)
                COLOR_DIM, BUILTINS[i].usage, COLOR_RESET);
     }
 
-    printf("\n%sExternal Commands:%s\n", COLOR_BOLD, COLOR_RESET);
-    printf("  Any system command (%sgit%s, %sgcc%s, %spython%s, %scurl%s, etc.) is executed\n",
-           COLOR_CYAN, COLOR_RESET, COLOR_CYAN, COLOR_RESET, COLOR_CYAN, COLOR_RESET, COLOR_CYAN, COLOR_RESET);
-    printf("  as a separate process via POSIX fork() & execvp().\n\n");
+    printf("\n%sExternal ELF64 Programs (MiniFS):%s\n", COLOR_BOLD, COLOR_RESET);
+    printf("  Any ELF64 binary stored on MiniFS (/bin/...) is executed as a Ring 3\n");
+    printf("  process via MiniKernel int 0x80 syscalls (SYS_FORK, SYS_EXEC, SYS_REAP).\n\n");
     return 0;
 }
 

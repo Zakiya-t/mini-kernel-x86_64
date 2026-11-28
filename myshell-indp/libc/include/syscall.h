@@ -3,6 +3,7 @@
 
 #include "stdint.h"
 #include "stddef.h"
+#include "stdbool.h"
 
 #define SYS_EXIT         1
 #define SYS_WRITE        2
